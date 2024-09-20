@@ -1,0 +1,13 @@
+mode: e2e  #[cascade, e2e, taipei1]
+asr:
+  openai: false
+  unit: true
+  downsample: 2
+  model_name: /home/enpei/EnPei/GPT4o/andybi7676/cool-whisper
+  km_model: /home/enpei/EnPei/GPT4o/SpeechChatGPTStreaming/server/StreamingHuBERTDiscrete/km_500_inf.pt
+  lan: zh
+slm:
+  model_name: /home/enpei/EnPei/GPT4o/llama_ckpt
+tts:
+  model_name: /home/enpei/EnPei/GPT4o/vocoder_ckpt/model.bin
+  vocoder_cfg: /home/enpei/EnPei/GPT4o/vocoder_ckpt/config.json

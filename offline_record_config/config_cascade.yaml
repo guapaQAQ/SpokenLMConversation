@@ -1,0 +1,13 @@
+mode: cascade  #[cascade, e2e, taipei1]
+use_openai: true
+openai_api_key: REMOVED # your openai api key
+asr:
+  openai: false
+  unit: false
+  downsample: 2
+  model_name: /home/enpei/EnPei/GPT4o/andybi7676/cool-whisper
+  lan: zh
+slm:
+  model_name: gpt-4o-mini
+tts: 
+  model_name: openai

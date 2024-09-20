@@ -1,0 +1,17 @@
+mode: taipei1  #[cascade, e2e, taipei1]
+use_openai: false
+asr:
+  openai: false
+  unit: true
+  downsample: 2
+  model_name: /home/enpei/EnPei/GPT4o/andybi7676/cool-whisper
+  km_model: /home/enpei/EnPei/GPT4o/SpeechChatGPTStreaming/server/StreamingHuBERTDiscrete/km_500_inf.pt
+  lan: zh
+slm:
+  hf_token: REMOVED
+  model_name: taipei1/speechllama3.1-sft-with-back
+  cache_dir: "../.cache/huggingface"
+tts:
+  model_name: /home/enpei/EnPei/GPT4o/SpokenLMConversation/Unit2Mel/ckpt/m_00240000
+  cfg: /home/enpei/EnPei/GPT4o/SpokenLMConversation/Unit2Mel/config.json
+  ref_audio: /home/enpei/EnPei/GPT4o/SpokenLMConversation/Unit2Mel/ref_audios/ref.wav
