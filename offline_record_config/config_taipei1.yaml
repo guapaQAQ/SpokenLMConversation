@@ -2,6 +2,7 @@ mode: taipei1  #[cascade, e2e, taipei1]
 use_openai: false
 asr:
   openai: false
+  do_asr: true
   unit: true
   downsample: 2
   model_name: /home/enpei/EnPei/GPT4o/andybi7676/cool-whisper
@@ -9,7 +10,7 @@ asr:
   lan: zh
 slm:
   hf_token: REMOVED
-  model_name: taipei1/speechllama3.1-sft-with-back
+  model_name: taipei1/spml-omni-instruct-step12864
   cache_dir: "../.cache/huggingface"
 tts:
   model_name: /home/enpei/EnPei/GPT4o/SpokenLMConversation/Unit2Mel/ckpt/m_00240000

@@ -1,8 +1,10 @@
 mode: cascade  #[cascade, e2e, taipei1]
 use_openai: true
-openai_api_key: REMOVED # your openai api key
+# openai_api_key: REMOVED # your openai api key
+openai_api_key: REMOVED
 asr:
   openai: false
+  do_asr: true
   unit: false
   downsample: 2
   model_name: /home/enpei/EnPei/GPT4o/andybi7676/cool-whisper

@@ -29,7 +29,7 @@ from librosa.util import normalize
 from openai_tts import OpenAITTSAPI
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG)
+
 MAX_WAV_VALUE = 32768.0
 
 
@@ -71,20 +71,25 @@ def asr_unit_pipeline(config, ASR, audio_path):
 
         return ''.join(kms), ' '.join(w for w, _ in words)
 
-    # Transcribe given audio
-    segments = transcribe(audio_path)
+    if config['asr']['do_asr'] == True:
+        # Transcribe given audio
+        segments = transcribe(audio_path)
 
-    if config['asr']['unit'] == False:
-        text = ' '.join([w.word for s in segments for w in s.words])
-        return text, text, text
+        if config['asr']['unit'] == False:
+            text = ' '.join([w.word for s in segments for w in s.words])
+            return text, text, text
+        
+        # Quantize Causal HuBERT features
+        kms = quantize(audio_path, config['asr']['downsample'])
 
-    # Quantize Causal HuBERT features
-    kms = quantize(audio_path, config['asr']['downsample'])
+        # Generate interleaving sequence
+        interleave, text = combine(kms, segments)
 
-    # Generate interleaving sequence
-    interleave, text = combine(kms, segments)
-    
-    return interleave, kms, text
+        return interleave, kms, text
+    else:
+        kms = quantize(audio_path, config['asr']['downsample'])
+
+        return ' '.join(kms), kms, ' '
 
 def openai_llm_pipeline(openai_model, prompt):
     """
@@ -119,12 +124,13 @@ def slm_pipeline(config, slm_model, conversation_history, model_name, device):
     Output:
         generated_text: str, generated text
     """
-    logger.debug(f"Model {model_name} prompts: {conversation_history}")
+    logger.info(f"Model {model_name} prompts: {conversation_history}")
     if config["mode"] == "cascade":
         client = OpenAI()
         response = client.chat.completions.create(
             model=config["slm"]["model_name"],
             messages=conversation_history,
+            max_tokens=200
             )
         text = response.choices[0].message.content
         return text, text, text
@@ -138,10 +144,12 @@ def slm_pipeline(config, slm_model, conversation_history, model_name, device):
     with torch.no_grad():
         outputs = slm_model.generate(
             inputs,
-            temperature=1.0,
-            max_new_tokens=1024
+            do_sample=False,
+            # temperature=0.0,
+            max_new_tokens=1024,
+            repetition_penalty=2.0,
         )
-    logger.debug(f"Model {model_name} generated output: {outputs}")
+    logger.info(f"Model {model_name} generated output: {outputs}")
     generated_ids = outputs[0][inputs.size(1):]
     generated_text = tokenizer.decode(generated_ids, skip_special_tokens=True)
     logger.info(f"Model {model_name} generated text: {generated_text}")
@@ -183,7 +191,7 @@ def tts_pipeline(config, tts_model, data, output_path, use_cuda=True, sample_rat
         return wav
     
     if config['mode'] == 'cascade':
-        wav = tts_model.text_to_wav(data, voice_name="alloy")
+        wav = tts_model.text_to_wav(data, voice_name="onyx") # ["alloy", "onyx", "nova"]
         sf.write(output_path, wav, sample_rate)
         return wav
 
@@ -202,7 +210,7 @@ def tts_pipeline(config, tts_model, data, output_path, use_cuda=True, sample_rat
 
         if len(codes) > 0:
             inp = dict()
-            logger.debug(f"codes: {codes}")
+            logger.info(f"codes: {codes}")
             inp["code"] = torch.LongTensor(codes).view(1, -1)
             inp["spkr"] = torch.LongTensor([speaker_id]).view(1, 1) 
             if use_cuda:
@@ -242,6 +250,7 @@ def tts_pipeline_taipei1(config, model, vocoder, h, device, data, output_path):
     # km = "310 310 112 112 237 237 411 411 197 197 390 390 121 121 171 171 197 197 492 492 492 492 20 20 20 20 119 119 428 428 189 189 157 157 15 15 153 153 353 353 378 378 116 116 374 374 88 88 498 498 204 204 310 310 157 157 72 72 498 498 189 189 73 73 411 411 134 134 498 498 316 316 498 498 299 299 299 299 498 498 498 498 498 498 498 498 243 243 268 268 362 362 335 335 164 164 21 21 498 498 242 242 493 493 223 223 423 423 498 498 104 104 419 419 193 193 281 281 498 498 92 92 498 498 250 250 239 239 498 498 498 498 498 498 266 266 169 169 243 243 293 293 498 498 168 168 49 49 498 498 293 293 498 498 399 399 303 303 377 377 408 408 424 424 294 294 297 297 341 341 436 436 217 217 390 390 114 114 395 395 450 450 164 164 21 21 192 192 363 363 493 493 201 201 210 210 153 153 3 3 164 164 498 498 362 362 457 457 498 498 8 8 424 424 315 315 391 391 498 498 498 498 112 112 351 351 21 21 498 498 405 405 498 498 334 334 292 292 498 498 116 116 499 499 204 204 53 53 11 11 311 311 498 498 395 395 368 368 498 498"
     # km = [int(k) for k in km.split()]
     km = [int(k) for k in data]
+    km = [item for item in km for _ in range(2)]
     km = torch.LongTensor(km)
 
     audio, sampling_rate = sf.read(config['tts']['ref_audio'])
@@ -334,7 +343,10 @@ def track2_audio_conversation(
         generated_text, tokens, text = slm_pipeline(configA, slm_modelA, conversation_historyA, 'A', device)
 
         # conversation_historyA.append({'role': 'assistant', 'content': generated_text})
-        conversation_historyA.append({'role': 'Machine', 'content': generated_text})
+        if configA['use_openai']:
+            conversation_historyA.append({'role': 'assistant', 'content': generated_text})
+        else:
+            conversation_historyA.append({'role': 'Machine', 'content': generated_text})
 
         # Record Model A's response
         conversation_log.append({'speaker': 'Model A', 'text': text})
@@ -363,7 +375,11 @@ def track2_audio_conversation(
 
         # Model B's turn
         generated_text, tokens, text = slm_pipeline(configB, slm_modelB, conversation_historyB, 'B', device)
-        conversation_historyB.append({'role': 'Machine', 'content': generated_text})
+
+        if configB['use_openai']:
+            conversation_historyB.append({'role': 'assistant', 'content': generated_text})
+        else:
+            conversation_historyB.append({'role': 'Machine', 'content': generated_text})
 
         # Record Model B's response
         conversation_log.append({'speaker': 'Model B', 'text': text})
@@ -401,11 +417,14 @@ def track2_audio_conversation(
 
     # Save the conversation log to JSON
     conversation_file = os.path.join(output_dir, f"{output_prefix}_conversation.json")
-    logger.debug(f"Conversation log: {conversation_log}")
+    logger.info(f"Conversation log: {conversation_log}")
     with open(conversation_file, 'w', encoding='utf-8') as f:
         json.dump(conversation_log, f, ensure_ascii=False, indent=4)
 
 def load_asr(config, device):
+    if config['asr']['do_asr'] == False:
+        assert config['asr']['unit'] == True, "ASR or Unit must be enabled."
+        return None
     whisper = WhisperModel(config['asr']['model_name'], device=device, compute_type="float16")
     return whisper
 
@@ -510,8 +529,32 @@ def track2_inference(configA, configB, prompt_path, output_dir, output_prefix, l
 
     # Loop through the prompts
     for idx, prompts in enumerate(prompt_dataset, start=1):
-        promptA = prompts['system_prompt_A'] + " Modality: {{User: speech, Machine: speech}}. Speech Style: Audio Book."
-        promptB = prompts['system_prompt_B'] + " Modality: {{User: speech, Machine: speech}}. Speech Style: Audio Book."
+        if configA['use_openai']:
+            promptA = prompts['system_prompt_A'] + """
+你是一個智能對話 AI 助手，與用戶以實時語音模式進行交流。需注意以下幾點：
+
+- 提供簡潔的回覆，避免過長的回答。
+- 使用口語化、輕鬆的語氣，使表達自然親切。"""
+        elif configA['asr']['do_asr'] == False:
+            promptA = prompts['system_prompt_A'] + " Modality: {{User: unit, Machine: speech}}. Speech Style: Audio Book."
+        else:
+            promptA = prompts['system_prompt_A'] + " Modality: {{User: speech, Machine: speech}}. Speech Style: Audio Book."
+
+        if configB['use_openai']:
+            promptB = prompts['system_prompt_B'] + """
+你是一個智能對話 AI 助手，與用戶以實時語音模式進行交流。需注意以下幾點：
+
+- 提供簡潔的回覆，避免過長的回答。
+- 使用口語化、輕鬆的語氣，使表達自然親切。"""
+# """You are an intelligent conversational AI assistant communicating with the user in real-time voice mode. Key points to keep in mind:
+# - Provide concise and clear responses. Avoid overly long replies.
+# - Use a conversational, casual tone to sound natural and approachable.
+# """
+        elif configB['asr']['do_asr'] == False:
+            promptB = prompts['system_prompt_B'] + " Modality: {{User: unit, Machine: speech}}. Speech Style: Audio Book."
+        else:
+            promptB = prompts['system_prompt_B'] + " Modality: {{User: speech, Machine: speech}}. Speech Style: Audio Book."
+
         output_prefix_idx = f"{output_prefix}_{idx:04d}"
 
         logger.info(f"Starting conversation {output_prefix_idx}...")
@@ -540,9 +583,24 @@ if __name__ == '__main__':
     parser.add_argument('--configA', type=str, default='offline_record_config/config_cascade.yaml', help='Path to the config file for Model A')
     parser.add_argument('--configB', type=str, default='offline_record_config/config_taipei1.yaml', help='Path to the config file for Model B')
     parser.add_argument('--prompt_path', type=str, default='track2_chinese_prompt.json', help='Path to the prompt dataset file')
-    parser.add_argument('--output_dir', type=str, default='./conversation_outputs', help='Path to the output directory')
+    parser.add_argument('--output_dir', type=str, default='./conversation_outputs_cascade_spml-omni-step12864_onyx_temp0_rep2', help='Path to the output directory')
     args = parser.parse_args()
     
+    prefix = args.prompt_path.split('.')[0].split('_')[1]
+
+    # create output directory
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    # Set up logging (Write to both console and file)
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    console_handler = logging.StreamHandler()
+    logger.addHandler(console_handler)
+    file_handler = logging.FileHandler(os.path.join(args.output_dir, f"{prefix}.log"))
+    logger.addHandler(file_handler)
+
+
     # Load the YAML file
     with open(args.configA, 'r') as f:
         configA = yaml.safe_load(f)
@@ -557,7 +615,7 @@ if __name__ == '__main__':
         configB=configB,
         prompt_path=args.prompt_path,
         output_dir=args.output_dir,
-        output_prefix=args.prompt_path.split('.')[0].split('_')[1],
+        output_prefix=prefix,
         latency=1,
         turn=3
     )
