@@ -9,7 +9,7 @@ asr:
   km_model: /home/enpei/EnPei/GPT4o/SpeechChatGPTStreaming/server/StreamingHuBERTDiscrete/km_500_inf.pt
   lan: zh
 slm:
-  hf_token: REMOVED
+  hf_token: [Your HF Token]
   model_name: taipei1/spml-omni-instruct-step12864
   cache_dir: "../.cache/huggingface"
 tts:
