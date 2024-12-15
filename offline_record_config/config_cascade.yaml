@@ -1,7 +1,6 @@
 mode: cascade  #[cascade, e2e, taipei1]
 use_openai: true
-# openai_api_key: REMOVED # your openai api key
-openai_api_key: REMOVED
+openai_api_key: [Your OpenAI key]
 asr:
   openai: false
   do_asr: true
